@@ -27,13 +27,13 @@ class PhonemeAligner:
 
     # 语言模型映射表
     LANG_MODEL_MAP = {
-        "zh": "facebook/mms-tts-zho",
-        "en": "facebook/mms-tts-eng",
-        "ja": "facebook/mms-tts-jpn",
-        "ko": "facebook/mms-tts-kor",
-        "de": "facebook/mms-tts-deu",
-        "fr": "facebook/mms-tts-fra",
-        "es": "facebook/mms-tts-spa",
+        "zh": "jonatasgrosman/wav2vec2-large-xlsr-53-chinese-zh-cn",
+        "en": "facebook/wav2vec2-base-960h",
+        "ja": "facebook/wav2vec2-xlsr-53",
+        "ko": "facebook/wav2vec2-xlsr-53",
+        "de": "facebook/wav2vec2-xlsr-53",
+        "fr": "facebook/wav2vec2-xlsr-53",
+        "es": "facebook/wav2vec2-xlsr-53",
         # 更多语言可扩展...
     }
 

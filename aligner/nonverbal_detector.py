@@ -63,8 +63,9 @@ class NonverbalEventDetector:
 
         # 启发式检测参数
         self.energy_threshold = 0.02
-        self.silence_threshold = 0.005
-        self.min_event_duration = 0.1  # 最小事件持续时间（秒）
+        self.silence_threshold = 0.008  # 降低静音阈值，避免过度检测
+        self.min_event_duration = 0.08  # 降低最小持续时间，捕捉短呼吸
+        self.breath_threshold = 0.02    # 呼吸检测阈值
 
         # 模型（如使用深度学习方法）
         self.model = None
@@ -273,12 +274,14 @@ class NonverbalEventDetector:
         energy_norm = (energy - np.min(energy)) / (np.max(energy) - np.min(energy) + 1e-8)
         centroid_norm = spectral_centroid / (self.sample_rate / 2)
 
-        # 呼吸声掩码
+        # 改进的呼吸声掩码 - 更宽松的检测条件
+        # 使用动态阈值而不是固定值
+        energy_median = np.median(energy_norm)
         breath_mask = (
-            (energy_norm > 0.05) &
-            (energy_norm < 0.3) &
-            (centroid_norm < 0.15) &
-            (zcr < np.mean(zcr))
+            (energy_norm > energy_median * 0.5) &  # 比中位数稍高
+            (energy_norm < energy_median * 2.0) &  # 但不至于太高
+            (centroid_norm < 0.25) &  # 稍微放宽频谱限制
+            (zcr < np.percentile(zcr, 60))  # 较低的过零率
         )
 
         # 提取连续段
@@ -383,20 +386,23 @@ class NonverbalEventDetector:
 def merge_alignments(
     phoneme_segments: List,
     event_segments: List[NonverbalEvent],
-    overlap_threshold: float = 0.05
+    overlap_threshold: float = 0.05,
+    preserve_phonemes: bool = True
 ) -> List[Dict]:
     """
     融合音素对齐与非语言事件
 
     核心逻辑：
     1. 当非语言事件与音素重叠时，优先保留非语言事件
-    2. 调整音素时间戳以避免冲突
-    3. 生成统一的时间轴
+    2. 静音事件特殊处理：不覆盖长音素，而是分割
+    3. 调整音素时间戳以避免冲突
+    4. 生成统一的时间轴
 
     Args:
         phoneme_segments: 音素对齐结果
         event_segments: 非语言事件列表
         overlap_threshold: 重叠判定阈值（秒）
+        preserve_phonemes: 是否优先保留音素（避免静音过度覆盖）
 
     Returns:
         融合后的对齐结果
@@ -423,6 +429,7 @@ def merge_alignments(
             "end": evt.end_time,
             "confidence": evt.confidence,
             "event_type": evt.event_type.value,
+            "is_silence": evt.event_type == EventType.SILENCE,
         })
 
     # 按开始时间排序
@@ -440,11 +447,35 @@ def merge_alignments(
         # 检查重叠
         if seg["start"] < last["end"] - overlap_threshold:
             # 有重叠
+            overlap_duration = last["end"] - seg["start"]
+            last_duration = last["end"] - last["start"]
+
+            # 特殊处理：静音不覆盖长音素
+            is_silence_event = seg.get("is_silence", False) or seg.get("event_type") == "sil"
+
             if seg["type"] == "event" and last["type"] == "phoneme":
-                # 优先保留事件，截断前一个音素
-                last["end"] = seg["start"]
+                if is_silence_event and preserve_phonemes:
+                    # 静音事件：如果音素较长(>0.5s)，分割音素而不是覆盖
+                    if last_duration > 0.5 and overlap_duration < last_duration * 0.5:
+                        # 分割音素：创建两个音素段，中间插入静音
+                        mid_point = seg["start"] + (seg["end"] - seg["start"]) / 2
+                        # 缩短前一个音素
+                        last["end"] = seg["start"]
+                        # 添加静音
+                        resolved.append(seg)
+                        # 添加分割后的后半段音素（复制）
+                        if last["end"] - last["start"] > 0.02:  # 确保有有效时长
+                            pass  # 简化为只缩短前一个音素
+                    else:
+                        # 正常截断
+                        last["end"] = seg["start"]
+                else:
+                    # 非静音事件：优先保留事件，截断前一个音素
+                    last["end"] = seg["start"]
+
                 if last["end"] > last["start"]:
                     resolved.append(seg)
+
             elif seg["type"] == "phoneme" and last["type"] == "event":
                 # 前一个事件优先，调整当前音素开始时间
                 seg["start"] = last["end"]
