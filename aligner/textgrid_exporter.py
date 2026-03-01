@@ -341,7 +341,11 @@ class TextGridExporter:
         phonemes = [s for s in alignment_result if s["type"] == "phoneme"]
 
         # 填充各层级
-        self.add_event_tier(tg, events)
+        # 事件使用 "token" 或 "label" 字段
+        self.add_event_tier(tg, [
+            {"start": e["start"], "end": e["end"], "label": e.get("token", e.get("label", ""))}
+            for e in events
+        ])
 
         # 中文音素层级
         self.add_phoneme_cn_tier(tg, [

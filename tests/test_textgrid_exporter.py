@@ -193,7 +193,8 @@ class TestToIPA:
         """测试 Arpabet 转 IPA"""
         exporter = TextGridExporter()
         result = exporter._to_ipa("SH")
-        assert result == "ʂ"
+        # SH -> ʃ (voiceless postalveolar fricative)
+        assert result == "ʃ"
 
     def test_unknown_phoneme(self):
         """测试未知音素返回原值"""
@@ -292,10 +293,11 @@ class TestExportFromAlignment:
         """测试基础导出"""
         exporter = TextGridExporter()
 
+        # 使用正确的事件格式（带 label 字段）
         alignment_result = [
             {"type": "phoneme", "token": "h", "start": 0.0, "end": 0.1, "confidence": 0.9},
             {"type": "phoneme", "token": "ao", "start": 0.1, "end": 0.4, "confidence": 0.9},
-            {"type": "event", "token": "[hx]", "start": 0.5, "end": 0.8, "confidence": 0.8, "event_type": "hx"},
+            {"type": "event", "label": "[hx]", "start": 0.5, "end": 0.8, "confidence": 0.8, "event_type": "hx"},
         ]
 
         output_path = temp_output_dir / "test.TextGrid"
@@ -373,12 +375,15 @@ class TestTextGridValidator:
         exporter = TextGridExporter()
         tg = exporter.create_textgrid(duration=5.0)
 
-        # 添加重叠的区间
-        events = [
-            {"start": 0.0, "end": 1.5, "label": "a"},
-            {"start": 1.0, "end": 2.0, "label": "b"},  # 与 a 重叠
-        ]
-        exporter.add_event_tier(tg, events)
+        # 直接创建重叠的区间（绕过 add_event_tier 的检查）
+        tier = tg.getFirst("Event")
+        if tier is None:
+            tier = textgrid.IntervalTier(name="Event", maxTime=5.0)
+            tg.append(tier)
+
+        # 手动添加重叠区间
+        tier.intervals.append(textgrid.Interval(0.0, 1.5, "a"))
+        tier.intervals.append(textgrid.Interval(1.0, 2.0, "b"))  # 与 a 重叠
 
         result = TextGridValidator.validate(tg)
 
@@ -394,7 +399,8 @@ class TestEdgeCases:
         exporter = TextGridExporter()
         output_path = temp_output_dir / "empty.TextGrid"
 
-        exporter.export_from_alignment([], str(output_path))
+        # 空对齐需要提供 duration 参数
+        exporter.export_from_alignment([], str(output_path), duration=1.0)
 
         assert output_path.exists()
 

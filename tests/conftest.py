@@ -8,6 +8,7 @@ import tempfile
 import shutil
 from pathlib import Path
 from typing import Generator, Dict
+from unittest.mock import patch
 import soundfile as sf
 import numpy as np
 
@@ -155,6 +156,13 @@ def sample_audio_file(temp_output_dir: Path) -> Path:
 
 
 @pytest.fixture(scope="function")
+def detector_with_audio(sample_audio_file: Path) -> tuple[NonverbalEventDetector, Path]:
+    """返回预初始化的检测器和音频文件路径"""
+    detector = NonverbalEventDetector(method="heuristic", sample_rate=16000)
+    return detector, sample_audio_file
+
+
+@pytest.fixture(scope="function")
 def silence_audio_file(temp_output_dir: Path) -> Path:
     """生成静音测试音频"""
     output_path = temp_output_dir / "silence.wav"
@@ -173,7 +181,16 @@ def silence_audio_file(temp_output_dir: Path) -> Path:
 @pytest.fixture(scope="function")
 def sample_aligner() -> PhonemeAligner:
     """预初始化的音素对齐器（每个测试函数新建，避免状态污染）"""
-    return PhonemeAligner(lang="zh")
+    with patch.object(PhonemeAligner, '_load_model'):
+        aligner = PhonemeAligner(lang="zh")
+        # 设置必要的属性用于测试
+        aligner.id2token = {0: '<pad>', 1: 'a', 2: 'b', 3: 'c'}
+        aligner.token2id = {v: k for k, v in aligner.id2token.items()}
+        # Mock processor
+        from unittest.mock import MagicMock
+        aligner.processor = MagicMock()
+        aligner.sample_rate = 16000
+        return aligner
 
 
 @pytest.fixture(scope="function")

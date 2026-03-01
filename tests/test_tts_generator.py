@@ -127,33 +127,54 @@ class TestChatTTSGenerator:
 
         assert result.exists()
 
-    def test_get_audio_duration(self, chattts_generator: ChatTTSGenerator, temp_output_dir: Path):
-        """测试获取音频时长功能"""
+    def test_get_audio_duration(self, temp_output_dir: Path):
+        """测试获取音频时长功能（使用独立生成器，避免 session fixture 问题）"""
+        from unittest.mock import patch, MagicMock
+        import numpy as np
+
         output_path = temp_output_dir / "test_duration.wav"
 
-        chattts_generator.generate(
-            text="测试时长",
-            output_path=str(output_path)
-        )
+        # 创建一个简单的测试音频文件
+        sample_rate = 24000
+        duration = 1.5
+        samples = int(sample_rate * duration)
+        audio = np.zeros(samples)
+        sf.write(output_path, audio, sample_rate)
 
-        duration = chattts_generator.get_audio_duration(str(output_path))
-        assert duration > 0
+        # 创建生成器并测试
+        gen = ChatTTSGenerator(compile=False)
+        result_duration = gen.get_audio_duration(str(output_path))
+
+        assert result_duration > 0
+        assert abs(result_duration - duration) < 0.01
 
         # 验证与 soundfile 读取的结果一致
         info = sf.info(output_path)
-        assert abs(duration - info.duration) < 0.001
+        assert abs(result_duration - info.duration) < 0.001
 
-    def test_custom_sample_rate(self, chattts_generator: ChatTTSGenerator, temp_output_dir: Path):
-        """测试自定义采样率"""
+    @pytest.mark.tts
+    def test_custom_sample_rate(self, temp_output_dir: Path):
+        """测试自定义采样率（使用 mock 避免加载模型）"""
+        from unittest.mock import patch, MagicMock
+        import numpy as np
+
         output_path = temp_output_dir / "test_sr.wav"
 
-        result = chattts_generator.generate(
-            text="测试采样率",
-            output_path=str(output_path),
-            sample_rate=16000  # ChatTTS 实际输出仍为 24000，但会被重采样
-        )
+        gen = ChatTTSGenerator(compile=False)
 
-        assert result.exists()
+        # Mock 模型加载和推理
+        with patch.object(gen, '_load_model'):
+            gen.model = MagicMock()
+            mock_wav = np.zeros(24000)  # 1 second at 24kHz
+            gen.model.infer.return_value = [mock_wav]
+
+            result = gen.generate(
+                text="测试采样率",
+                output_path=str(output_path),
+                sample_rate=16000
+            )
+
+            assert result.exists()
 
 
 class TestGenerateTestAudio:
