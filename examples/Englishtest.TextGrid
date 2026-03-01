@@ -1,0 +1,168 @@
+File type = "ooTextFile"
+Object class = "TextGrid"
+
+xmin = 0.0
+xmax = 6.53
+tiers? <exists>
+size = 4
+item []:
+	item [1]:
+		class = "IntervalTier"
+		name = "Event"
+		xmin = 0.0
+		xmax = 6.53
+		intervals: size = 6
+			intervals [1]:
+				xmin = 0.0
+				xmax = 1.45
+				text = ""
+			intervals [2]:
+				xmin = 1.45
+				xmax = 2.08
+				text = "[sil]"
+			intervals [3]:
+				xmin = 2.08
+				xmax = 3.8000000000000003
+				text = ""
+			intervals [4]:
+				xmin = 3.8000000000000003
+				xmax = 4.3100000000000005
+				text = "[sil]"
+			intervals [5]:
+				xmin = 4.3100000000000005
+				xmax = 5.07
+				text = ""
+			intervals [6]:
+				xmin = 5.07
+				xmax = 6.53
+				text = "[sil]"
+	item [2]:
+		class = "IntervalTier"
+		name = "Word"
+		xmin = 0.0
+		xmax = 6.53
+		intervals: size = 26
+			intervals [1]:
+				xmin = 0.0
+				xmax = 2.2
+				text = ""
+			intervals [2]:
+				xmin = 2.2
+				xmax = 2.34
+				text = "Y"
+			intervals [3]:
+				xmin = 2.34
+				xmax = 2.42
+				text = "N"
+			intervals [4]:
+				xmin = 2.42
+				xmax = 2.48
+				text = "A"
+			intervals [5]:
+				xmin = 2.48
+				xmax = 2.52
+				text = "M"
+			intervals [6]:
+				xmin = 2.52
+				xmax = 2.7
+				text = "E"
+			intervals [7]:
+				xmin = 2.7
+				xmax = 2.74
+				text = "I"
+			intervals [8]:
+				xmin = 2.74
+				xmax = 2.82
+				text = "S"
+			intervals [9]:
+				xmin = 2.82
+				xmax = 2.84
+				text = "Z"
+			intervals [10]:
+				xmin = 2.84
+				xmax = 2.94
+				text = "H"
+			intervals [11]:
+				xmin = 2.94
+				xmax = 3.06
+				text = "A"
+			intervals [12]:
+				xmin = 3.06
+				xmax = 3.16
+				text = "O"
+			intervals [13]:
+				xmin = 3.16
+				xmax = 3.2800000000000002
+				text = "J"
+			intervals [14]:
+				xmin = 3.2800000000000002
+				xmax = 3.3200000000000003
+				text = "U"
+			intervals [15]:
+				xmin = 3.3200000000000003
+				xmax = 3.44
+				text = "N"
+			intervals [16]:
+				xmin = 3.44
+				xmax = 3.6
+				text = "J"
+			intervals [17]:
+				xmin = 3.6
+				xmax = 3.64
+				text = "U"
+			intervals [18]:
+				xmin = 3.64
+				xmax = 3.8000000000000003
+				text = "N"
+			intervals [19]:
+				xmin = 3.8000000000000003
+				xmax = 4.3
+				text = ""
+			intervals [20]:
+				xmin = 4.3
+				xmax = 4.38
+				text = "H"
+			intervals [21]:
+				xmin = 4.38
+				xmax = 4.46
+				text = "A"
+			intervals [22]:
+				xmin = 4.46
+				xmax = 4.5200000000000005
+				text = "H"
+			intervals [23]:
+				xmin = 4.5200000000000005
+				xmax = 4.58
+				text = "A"
+			intervals [24]:
+				xmin = 4.58
+				xmax = 5.0200000000000005
+				text = "H"
+			intervals [25]:
+				xmin = 5.0200000000000005
+				xmax = 5.07
+				text = "A"
+			intervals [26]:
+				xmin = 5.07
+				xmax = 6.53
+				text = ""
+	item [3]:
+		class = "IntervalTier"
+		name = "Phoneme-CN"
+		xmin = 0.0
+		xmax = 6.53
+		intervals: size = 1
+			intervals [1]:
+				xmin = 0.0
+				xmax = 6.53
+				text = ""
+	item [4]:
+		class = "IntervalTier"
+		name = "IPA-EN"
+		xmin = 0.0
+		xmax = 6.53
+		intervals: size = 1
+			intervals [1]:
+				xmin = 0.0
+				xmax = 6.53
+				text = ""
