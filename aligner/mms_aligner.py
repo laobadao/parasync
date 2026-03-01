@@ -253,13 +253,18 @@ class MMSAligner:
         # 执行对齐
         with torch.no_grad():
             # 获取 emission (CTC probabilities)
-            # Wav2VecCtc 模型使用 source 参数
-            net_output = self.model(source=waveform, padding_mask=None)
-            # net_output 是字典，包含 encoder_out
-            encoder_out = net_output["encoder_out"]  # T x B x C
-            # 转置为 B x T x C
-            encoder_out = encoder_out.transpose(0, 1)  # B x T x C
-            emissions = self.model.get_logits(encoder_out)
+            # 注意：MMS-1B 模型使用适配器层，需要特定的 corpus_key 配置
+            # 当前模型存在适配器维度不匹配问题，建议使用 TorchaudioAligner
+            try:
+                net_output = self.model(source=waveform, padding_mask=None, corpus_key=['eng'])
+                encoder_out = net_output["encoder_out"]  # T x B x C
+                encoder_out = encoder_out.transpose(0, 1)  # B x T x C
+                emissions = self.model.get_logits(encoder_out)
+            except Exception as e:
+                print(f"[MMS] 模型推理失败: {e}")
+                print("[MMS] 提示：当前 MMS-1B 模型有适配器维度问题")
+                print("[MMS] 建议使用 TorchaudioAligner 替代")
+                raise
             emissions = torch.log_softmax(emissions, dim=-1)
 
         # CTC 强制对齐
