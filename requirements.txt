@@ -1,0 +1,28 @@
+# ParaSync - 语音对齐工具包依赖
+
+# 核心依赖
+torch>=2.0.0
+torchaudio>=2.0.0
+transformers>=4.30.0
+numpy>=1.24.0
+
+# 音频处理
+librosa>=0.10.0
+soundfile>=0.12.0
+
+# TextGrid 处理
+textgrid>=1.5.0
+
+# 中文处理
+jieba>=0.42.1
+pypinyin>=0.49.0
+
+# 英文 G2P
+g2p-en>=2.1.0
+epitran>=1.25.0
+
+# 音频事件检测 (可选)
+yapec>=0.1.0
+
+# 可视化 (可选)
+matplotlib>=3.7.0
