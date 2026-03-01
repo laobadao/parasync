@@ -148,9 +148,9 @@ class PhonemeAligner:
             # 但保留常见多字词
             text = self._segment_chinese(text)
         elif self.lang == "en":
-            # 英文：保持原样（wav2vec2-base-960h 使用大写字母）
-            # text = text.lower()
-            pass
+            # 英文：wav2vec2-base-960h 使用大写字母，移除空格和标点
+            # 只保留 A-Z 字母
+            text = ''.join(c for c in text.upper() if c.isalpha())
 
         return text
 
