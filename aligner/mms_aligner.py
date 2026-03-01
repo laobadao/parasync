@@ -12,6 +12,17 @@ from typing import List, Tuple, Optional, Dict
 from dataclasses import dataclass
 
 
+def chinese_to_pinyin(text: str) -> str:
+    """将中文转换为拼音（MMS-1B 使用拉丁字母表示）"""
+    from pypinyin import pinyin, Style
+
+    # 转换为拼音，不带声调
+    py_list = pinyin(text, style=Style.TONE3, strict=False)
+    # 展平并连接
+    result = ' '.join([item[0] for item in py_list])
+    return result
+
+
 @dataclass
 class MMSAlignmentSegment:
     """MMS 对齐结果段"""
@@ -62,6 +73,7 @@ class MMSAligner:
     def _check_and_download(self):
         """检查并下载必要文件"""
         import urllib.request
+        import ssl
 
         # 检查模型文件
         if not Path(self.model_path).exists():
@@ -69,18 +81,30 @@ class MMSAligner:
             print(f"   请运行: python scripts/download_mms_model.py")
             raise FileNotFoundError(f"Model not found: {self.model_path}")
 
-        # 下载字典
+        # 尝试下载字典（可选，模型本身已包含字典信息）
         if self.dict_path is None:
             cache_dir = Path.home() / ".cache" / "parasync" / "mms"
             cache_dir.mkdir(parents=True, exist_ok=True)
             dict_file = cache_dir / "mms1b_all_dict.txt"
 
             if not dict_file.exists():
-                print(f"📥 下载字典文件...")
-                urllib.request.urlretrieve(self.DEFAULT_DICT_URL, dict_file)
-                print(f"   保存到: {dict_file}")
+                try:
+                    print(f"📥 尝试下载字典文件...")
+                    # 创建 SSL 上下文（处理某些证书问题）
+                    ssl_context = ssl.create_default_context()
+                    ssl_context.check_hostname = False
+                    ssl_context.verify_mode = ssl.CERT_NONE
 
-            self.dict_path = str(dict_file)
+                    with urllib.request.urlopen(self.DEFAULT_DICT_URL, context=ssl_context, timeout=30) as response:
+                        with open(dict_file, 'wb') as f:
+                            f.write(response.read())
+                    print(f"   保存到: {dict_file}")
+                except Exception as e:
+                    print(f"   字典下载失败（可忽略）: {e}")
+                    print(f"   使用模型内置字典")
+
+            if dict_file.exists():
+                self.dict_path = str(dict_file)
 
     def _load_model(self):
         """加载 MMS 模型"""
@@ -148,7 +172,7 @@ class MMSAligner:
 
         return waveform, sample_rate
 
-    def text_to_tokens(self, text: str) -> List[int]:
+    def text_to_tokens(self, text: str) -> Tuple[List[int], List[str]]:
         """
         将文本转换为模型 tokens
 
@@ -156,22 +180,39 @@ class MMSAligner:
             text: 输入文本
 
         Returns:
-            token IDs 列表
+            (token IDs 列表, 原始字符列表)
         """
+        from pypinyin import pinyin, Style
+
         # 使用任务的 target dictionary
         dictionary = self.task.target_dictionary
 
-        # 简单字符分割（中文）
-        chars = list(text.replace(" ", ""))
+        # 中文转换为拼音（MMS-1B 使用拉丁字母）
+        if self.language == "zho":
+            # 按字符转换为拼音
+            py_list = pinyin(text, style=Style.TONE3, strict=False)
+            chars = [item[0] for item in py_list]
+        else:
+            # 英文：按空格分割
+            chars = text.lower().split()
 
         tokens = []
+        valid_chars = []
         for char in chars:
             # 查找字符在字典中的索引
             idx = dictionary.index(char)
             if idx != dictionary.unk():
                 tokens.append(idx)
+                valid_chars.append(char)
+            else:
+                # 尝试逐个字符查找
+                for c in char:
+                    idx = dictionary.index(c)
+                    if idx != dictionary.unk():
+                        tokens.append(idx)
+                        valid_chars.append(c)
 
-        return tokens
+        return tokens, valid_chars
 
     def align(
         self,
@@ -190,34 +231,34 @@ class MMSAligner:
         Returns:
             对齐结果列表
         """
-        import torchaudio.compliance.kaldi as kaldi
-
-        # 预处理音频
+        # 预处理音频 - 获取原始波形
         waveform, sample_rate = self.preprocess_audio(audio_path)
         waveform = waveform.to(self.device)
 
-        # 提取特征 (fbank)
-        features = kaldi.fbank(
-            waveform,
-            num_mel_bins=80,
-            sample_frequency=sample_rate,
-            frame_length=25,
-            frame_shift=10
-        )
-        features = features.unsqueeze(0)  # 添加 batch 维度
+        # MMS/Wav2Vec2 模型期望原始波形输入 [batch, length]
+        if waveform.dim() == 1:
+            waveform = waveform.unsqueeze(0)  # [1, length]
 
         # 准备文本
-        tokens = self.text_to_tokens(transcript)
+        tokens, valid_chars = self.text_to_tokens(transcript)
+        if not tokens:
+            print("警告: 没有有效的 tokens")
+            return []
         token_tensor = torch.tensor([tokens], dtype=torch.long).to(self.device)
 
         # 获取长度
-        src_lengths = torch.tensor([features.shape[1]], dtype=torch.long).to(self.device)
+        src_lengths = torch.tensor([waveform.shape[1]], dtype=torch.long).to(self.device)
         tgt_lengths = torch.tensor([len(tokens)], dtype=torch.long).to(self.device)
 
         # 执行对齐
         with torch.no_grad():
             # 获取 emission (CTC probabilities)
-            encoder_out = self.model.encoder(features, src_lengths)
+            # Wav2VecCtc 模型使用 source 参数
+            net_output = self.model(source=waveform, padding_mask=None)
+            # net_output 是字典，包含 encoder_out
+            encoder_out = net_output["encoder_out"]  # T x B x C
+            # 转置为 B x T x C
+            encoder_out = encoder_out.transpose(0, 1)  # B x T x C
             emissions = self.model.get_logits(encoder_out)
             emissions = torch.log_softmax(emissions, dim=-1)
 
@@ -232,7 +273,7 @@ class MMSAligner:
         segments = self._alignment_to_segments(
             alignment,
             tokens,
-            transcript,
+            valid_chars,
             waveform.shape[1] / sample_rate
         )
 
