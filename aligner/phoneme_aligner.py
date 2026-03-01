@@ -148,8 +148,9 @@ class PhonemeAligner:
             # 但保留常见多字词
             text = self._segment_chinese(text)
         elif self.lang == "en":
-            # 英文：转换为小写
-            text = text.lower()
+            # 英文：保持原样（wav2vec2-base-960h 使用大写字母）
+            # text = text.lower()
+            pass
 
         return text
 
