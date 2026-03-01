@@ -147,6 +147,9 @@
             padding: 20px;
             background: rgba(255,255,255,0.05);
             border-radius: 12px;
+            position: sticky;
+            top: 20px;
+            z-index: 100;
         }
 
         .audio-player h3 {
@@ -154,9 +157,60 @@
             margin-bottom: 15px;
         }
 
+        .audio-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+
+        .play-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #00d4ff, #7b2cbf);
+            border: none;
+            color: #fff;
+            font-size: 1.5em;
+            cursor: pointer;
+            transition: transform 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .play-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .time-display {
+            font-family: monospace;
+            font-size: 1.2em;
+            color: #00d4ff;
+            min-width: 100px;
+        }
+
+        .progress-container {
+            flex: 1;
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+            border-radius: 4px;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
         audio {
             width: 100%;
             border-radius: 8px;
+            display: none;
         }
 
         .timeline {
@@ -165,7 +219,8 @@
         }
 
         .tier {
-            margin-bottom: 20px;
+            margin-bottom: 30px;
+            position: relative;
         }
 
         .tier-label {
@@ -175,14 +230,28 @@
             font-size: 0.9em;
             text-transform: uppercase;
             letter-spacing: 1px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .tier-current {
+            font-size: 0.8em;
+            color: #ff6b6b;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .tier-current.active {
+            opacity: 1;
         }
 
         .tier-track {
             position: relative;
-            height: 40px;
+            height: 50px;
             background: rgba(255,255,255,0.05);
             border-radius: 8px;
-            overflow: hidden;
+            overflow: visible;
         }
 
         .segment {
@@ -193,17 +262,25 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.85em;
+            font-size: 0.9em;
             font-weight: bold;
             cursor: pointer;
             transition: all 0.2s;
             border: 1px solid rgba(255,255,255,0.2);
+            z-index: 5;
         }
 
         .segment:hover {
             transform: scaleY(1.1);
-            z-index: 10;
+            z-index: 15;
             box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+
+        .segment.active {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
+            box-shadow: 0 0 20px rgba(255,107,107,0.6);
+            z-index: 10;
+            transform: scaleY(1.05);
         }
 
         .segment.silence {
@@ -211,8 +288,36 @@
             color: #666;
         }
 
+        .segment.silence.active {
+            background: rgba(255,107,107,0.3);
+            color: #ff9999;
+        }
+
         .segment.event {
             background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
+        }
+
+        .playhead {
+            position: absolute;
+            top: -10px;
+            bottom: -10px;
+            width: 2px;
+            background: #ff6b6b;
+            z-index: 20;
+            pointer-events: none;
+            transition: left 0.1s linear;
+        }
+
+        .playhead::before {
+            content: '';
+            position: absolute;
+            top: -8px;
+            left: -6px;
+            width: 14px;
+            height: 14px;
+            background: #ff6b6b;
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(255,107,107,0.5);
         }
 
         .time-ruler {
@@ -238,9 +343,28 @@
         }
 
         .text-content {
-            font-size: 1.3em;
+            font-size: 1.5em;
             line-height: 1.8;
             color: #fff;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .char-box {
+            display: inline-block;
+            padding: 4px 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            transition: all 0.2s;
+            min-width: 30px;
+            text-align: center;
+        }
+
+        .char-box.active {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(255,107,107,0.4);
         }
 
         .stats {
@@ -297,6 +421,10 @@
 
             header h1 {
                 font-size: 2em;
+            }
+
+            .text-content {
+                font-size: 1.2em;
             }
         }
     </style>
@@ -380,6 +508,12 @@
     </div>
 
     <script>
+        // 全局变量
+        let currentAudio = null;
+        let currentDuration = 0;
+        let animationId = null;
+        let currentSegments = [];
+
         // 示例数据
         const examples = {
             english: {
@@ -462,7 +596,107 @@
             }
         };
 
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            const ms = Math.floor((seconds % 1) * 100);
+            return `${mins}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
+        }
+
+        function updatePlayhead(currentTime) {
+            const progressPercent = (currentTime / currentDuration) * 100;
+
+            // 更新播放头位置
+            document.querySelectorAll('.playhead').forEach(head => {
+                head.style.left = `${progressPercent}%`;
+            });
+
+            // 更新进度条
+            const progressBar = document.querySelector('.progress-bar');
+            if (progressBar) {
+                progressBar.style.width = `${progressPercent}%`;
+            }
+
+            // 更新时间显示
+            const timeDisplay = document.querySelector('.time-display');
+            if (timeDisplay) {
+                timeDisplay.textContent = `${currentTime.toFixed(2)}s / ${currentDuration.toFixed(2)}s`;
+            }
+
+            // 高亮当前激活的片段
+            document.querySelectorAll('.segment').forEach(seg => {
+                const start = parseFloat(seg.dataset.start);
+                const end = parseFloat(seg.dataset.end);
+                if (currentTime >= start && currentTime < end) {
+                    seg.classList.add('active');
+                } else {
+                    seg.classList.remove('active');
+                }
+            });
+
+            // 更新当前字符高亮
+            document.querySelectorAll('.char-box').forEach((box, index) => {
+                if (index < currentSegments.length) {
+                    const seg = currentSegments[index];
+                    if (currentTime >= seg.start && currentTime < seg.end) {
+                        box.classList.add('active');
+                    } else {
+                        box.classList.remove('active');
+                    }
+                }
+            });
+
+            // 更新当前播放的 tier 标签
+            document.querySelectorAll('.tier-current').forEach(label => {
+                const tierTrack = label.closest('.tier').querySelector('.tier-track');
+                if (tierTrack) {
+                    const activeSeg = tierTrack.querySelector('.segment.active');
+                    if (activeSeg) {
+                        label.textContent = `当前: ${activeSeg.textContent}`;
+                        label.classList.add('active');
+                    } else {
+                        label.classList.remove('active');
+                    }
+                }
+            });
+        }
+
+        function animate() {
+            if (currentAudio && !currentAudio.paused) {
+                updatePlayhead(currentAudio.currentTime);
+            }
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function togglePlay() {
+            if (!currentAudio) return;
+
+            if (currentAudio.paused) {
+                currentAudio.play();
+                document.querySelector('.play-btn').textContent = '⏸';
+            } else {
+                currentAudio.pause();
+                document.querySelector('.play-btn').textContent = '▶';
+            }
+        }
+
+        function seekTo(percent) {
+            if (!currentAudio) return;
+            const time = (percent / 100) * currentDuration;
+            currentAudio.currentTime = time;
+            updatePlayhead(time);
+        }
+
         function loadExample(type) {
+            // 取消之前的动画
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio = null;
+            }
+
             // 更新按钮状态
             document.querySelectorAll('.example-btn').forEach(btn => {
                 btn.classList.remove('active');
@@ -470,13 +704,27 @@
             event.target.classList.add('active');
 
             const data = examples[type];
+            currentDuration = data.duration;
+            currentSegments = data.segments;
             const container = document.getElementById('visualization');
+
+            // 构建字符高亮文本
+            const charBoxes = data.text.split('').map(char =>
+                `<span class="char-box">${char}</span>`
+            ).join('');
 
             // 构建可视化 HTML
             let html = `
                 <div class="audio-player">
                     <h3>🎵 音频播放</h3>
-                    ${data.audio ? `<audio controls src="${data.audio}"></audio>` : '<p style="color: #666;">音频文件未找到</p>'}
+                    <div class="audio-controls">
+                        <button class="play-btn" onclick="togglePlay()">▶</button>
+                        <div class="progress-container" onclick="seekByClick(event)">
+                            <div class="progress-bar"></div>
+                        </div>
+                        <div class="time-display">0.00s / ${data.duration.toFixed(2)}s</div>
+                    </div>
+                    ${data.audio ? `<audio id="audioPlayer" src="${data.audio}"></audio>` : '<p style="color: #666;">音频文件未找到</p>'}
                 </div>
 
                 <div class="text-display">
@@ -485,8 +733,8 @@
                 </div>
 
                 <div class="text-display">
-                    <h4>🎯 对齐文本</h4>
-                    <div class="text-content">${data.text}</div>
+                    <h4>🎯 对齐文本（播放时高亮）</h4>
+                    <div class="text-content">${charBoxes}</div>
                 </div>
 
                 <div class="timeline">
@@ -496,12 +744,16 @@
             if (data.events && data.events.length > 0) {
                 html += `
                     <div class="tier">
-                        <div class="tier-label">🫁 Event Tier (非语言事件)</div>
-                        <div class="tier-track">
-                            ${data.events.map(e => {
+                        <div class="tier-label">
+                            <span>🫁 Event Tier (非语言事件)</span>
+                            <span class="tier-current"></span>
+                        </div>
+                        <div class="tier-track" data-duration="${data.duration}">
+                            <div class="playhead"></div>
+                            ${data.events.map((e, i) => {
                                 const left = (e.start / data.duration) * 100;
                                 const width = ((e.end - e.start) / data.duration) * 100;
-                                return `<div class="segment silence" style="left: ${left}%; width: ${width}%;" title="${e.text}: ${e.start.toFixed(2)}s - ${e.end.toFixed(2)}s">${e.text}</div>`;
+                                return `<div class="segment silence" data-start="${e.start}" data-end="${e.end}" style="left: ${left}%; width: ${width}%;" title="${e.text}: ${e.start.toFixed(2)}s - ${e.end.toFixed(2)}s">${e.text}</div>`;
                             }).join('')}
                         </div>
                         <div class="time-ruler">
@@ -516,12 +768,16 @@
             // 添加 Word 层
             html += `
                 <div class="tier">
-                    <div class="tier-label">🔤 Word Tier (字词层)</div>
-                    <div class="tier-track">
-                        ${data.segments.map(s => {
+                    <div class="tier-label">
+                        <span>🔤 Word Tier (字词层)</span>
+                        <span class="tier-current"></span>
+                    </div>
+                    <div class="tier-track" data-duration="${data.duration}">
+                        <div class="playhead"></div>
+                        ${data.segments.map((s, i) => {
                             const left = (s.start / data.duration) * 100;
                             const width = Math.max(((s.end - s.start) / data.duration) * 100, 2);
-                            return `<div class="segment" style="left: ${left}%; width: ${width}%;" title="${s.text}: ${s.start.toFixed(2)}s - ${s.end.toFixed(2)}s">${s.text}</div>`;
+                            return `<div class="segment" data-start="${s.start}" data-end="${s.end}" style="left: ${left}%; width: ${width}%;" title="${s.text}: ${s.start.toFixed(2)}s - ${s.end.toFixed(2)}s">${s.text}</div>`;
                         }).join('')}
                     </div>
                     <div class="time-ruler">
@@ -536,12 +792,16 @@
             if (data.phonemes && data.phonemes.length > 0) {
                 html += `
                     <div class="tier">
-                        <div class="tier-label">📢 Phoneme-CN Tier (声韵母)</div>
-                        <div class="tier-track">
-                            ${data.phonemes.map(p => {
+                        <div class="tier-label">
+                            <span>📢 Phoneme-CN Tier (声韵母)</span>
+                            <span class="tier-current"></span>
+                        </div>
+                        <div class="tier-track" data-duration="${data.duration}">
+                            <div class="playhead"></div>
+                            ${data.phonemes.map((p, i) => {
                                 const left = (p.start / data.duration) * 100;
                                 const width = Math.max(((p.end - p.start) / data.duration) * 100, 2);
-                                return `<div class="segment event" style="left: ${left}%; width: ${width}%;" title="${p.text}: ${p.start.toFixed(2)}s - ${p.end.toFixed(2)}s">${p.text}</div>`;
+                                return `<div class="segment event" data-start="${p.start}" data-end="${p.end}" style="left: ${left}%; width: ${width}%;" title="${p.text}: ${p.start.toFixed(2)}s - ${p.end.toFixed(2)}s">${p.text}</div>`;
                             }).join('')}
                         </div>
                         <div class="time-ruler">
@@ -578,6 +838,43 @@
             `;
 
             container.innerHTML = html;
+
+            // 设置音频元素
+            if (data.audio) {
+                currentAudio = document.getElementById('audioPlayer');
+
+                currentAudio.addEventListener('play', () => {
+                    document.querySelector('.play-btn').textContent = '⏸';
+                    animate();
+                });
+
+                currentAudio.addEventListener('pause', () => {
+                    document.querySelector('.play-btn').textContent = '▶';
+                    if (animationId) {
+                        cancelAnimationFrame(animationId);
+                    }
+                });
+
+                currentAudio.addEventListener('ended', () => {
+                    document.querySelector('.play-btn').textContent = '▶';
+                    updatePlayhead(0);
+                });
+
+                currentAudio.addEventListener('loadedmetadata', () => {
+                    currentDuration = currentAudio.duration || data.duration;
+                });
+            }
+
+            // 开始动画循环
+            animate();
+        }
+
+        function seekByClick(event) {
+            const container = event.currentTarget;
+            const rect = container.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const percent = (x / rect.width) * 100;
+            seekTo(percent);
         }
 
         // 默认加载英文示例
