@@ -66,11 +66,20 @@ class NonverbalEventDetector:
         self.silence_threshold = 0.008  # 降低静音阈值，避免过度检测
         self.min_event_duration = 0.08  # 降低最小持续时间，捕捉短呼吸
         self.breath_threshold = 0.02    # 呼吸检测阈值
+        self._resamplers: Dict[int, torchaudio.transforms.Resample] = {}
 
         # 模型（如使用深度学习方法）
         self.model = None
         if method == "model":
             self._load_model()
+
+    def _get_resampler(self, source_sample_rate: int) -> torchaudio.transforms.Resample:
+        """缓存重采样器，避免重复构造相同配置。"""
+        resampler = self._resamplers.get(source_sample_rate)
+        if resampler is None:
+            resampler = torchaudio.transforms.Resample(source_sample_rate, self.sample_rate)
+            self._resamplers[source_sample_rate] = resampler
+        return resampler
 
     def _load_model(self):
         """加载预训练的音频事件检测模型"""
@@ -101,8 +110,7 @@ class NonverbalEventDetector:
         # 加载音频
         waveform, sr = torchaudio.load(audio_path)
         if sr != self.sample_rate:
-            resampler = torchaudio.transforms.Resample(sr, self.sample_rate)
-            waveform = resampler(waveform)
+            waveform = self._get_resampler(sr)(waveform)
 
         # 转换为单声道
         if waveform.shape[0] > 1:
@@ -128,7 +136,7 @@ class NonverbalEventDetector:
         events_to_detect = events_to_detect or list(EventType)
 
         # 计算基本特征
-        features = self._extract_features(waveform)
+        features = self._extract_features(waveform, include_optional=False)
         energy = features["energy"]
         spectral_centroid = features["spectral_centroid"]
         zcr = features["zero_crossing_rate"]
@@ -161,8 +169,12 @@ class NonverbalEventDetector:
 
         return events
 
-    def _extract_features(self, waveform: np.ndarray) -> Dict[str, np.ndarray]:
-        """提取音频特征"""
+    def _extract_features(
+        self,
+        waveform: np.ndarray,
+        include_optional: bool = True
+    ) -> Dict[str, np.ndarray]:
+        """提取音频特征，可按需跳过仅用于调试的重特征。"""
         hop_length = int(0.01 * self.sample_rate)  # 10ms
 
         # 能量 (RMS)
@@ -185,30 +197,29 @@ class NonverbalEventDetector:
             hop_length=hop_length,
             frame_length=hop_length * 4
         )[0]
-
-        # 频谱滚降
-        spec_rolloff = librosa.feature.spectral_rolloff(
-            y=waveform,
-            sr=self.sample_rate,
-            hop_length=hop_length
-        )[0]
-
-        # 梅尔频谱 (用于笑声检测)
-        mel_spec = librosa.feature.melspectrogram(
-            y=waveform,
-            sr=self.sample_rate,
-            hop_length=hop_length,
-            n_mels=40
-        )
-        mel_energy = np.mean(mel_spec, axis=0)
-
-        return {
+        features = {
             "energy": rms,
             "spectral_centroid": spec_cent,
             "zero_crossing_rate": zcr,
-            "spectral_rolloff": spec_rolloff,
-            "mel_energy": mel_energy,
         }
+
+        if include_optional:
+            # 这两项只在外部调试/分析时使用，主检测流程无需计算。
+            features["spectral_rolloff"] = librosa.feature.spectral_rolloff(
+                y=waveform,
+                sr=self.sample_rate,
+                hop_length=hop_length
+            )[0]
+
+            mel_spec = librosa.feature.melspectrogram(
+                y=waveform,
+                sr=self.sample_rate,
+                hop_length=hop_length,
+                n_mels=40
+            )
+            features["mel_energy"] = np.mean(mel_spec, axis=0)
+
+        return features
 
     def _detect_silence(
         self,

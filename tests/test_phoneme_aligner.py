@@ -84,6 +84,18 @@ class TestAlignmentSegment:
 class TestPreprocessAudio:
     """音频预处理测试"""
 
+    def test_resampler_cache_reuses_same_source_rate(self):
+        """测试同一源采样率复用重采样器"""
+        with patch.object(PhonemeAligner, '_load_model'):
+            aligner = PhonemeAligner(lang="zh", sample_rate=16000)
+
+        with patch("aligner.phoneme_aligner.torchaudio.transforms.Resample") as mock_resample:
+            first = aligner._get_resampler(8000)
+            second = aligner._get_resampler(8000)
+
+        mock_resample.assert_called_once_with(orig_freq=8000, new_freq=16000)
+        assert first is second
+
     def test_preprocess_mono_audio(self, sample_aligner: PhonemeAligner, sample_audio_file: Path):
         """测试单声道音频预处理"""
         waveform = sample_aligner.preprocess_audio(str(sample_audio_file))
