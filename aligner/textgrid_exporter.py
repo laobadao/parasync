@@ -5,6 +5,7 @@ TextGrid 高级导出模块，支持多层级标注
 
 import textgrid
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import List, Optional, Dict, Tuple
 from enum import Enum
 import json
@@ -38,6 +39,16 @@ class TextGridExporter:
         'g', 'k', 'h', 'j', 'q', 'x',
         'zh', 'ch', 'sh', 'r', 'z', 'c', 's', 'y', 'w'
     }
+    INITIALS_SORTED = tuple(sorted(INITIALS, key=len, reverse=True))
+
+    TONE_TRANSLATION = str.maketrans({
+        'ā': 'a', 'á': 'a', 'ǎ': 'a', 'à': 'a',
+        'ē': 'e', 'é': 'e', 'ě': 'e', 'è': 'e',
+        'ī': 'i', 'í': 'i', 'ǐ': 'i', 'ì': 'i',
+        'ō': 'o', 'ó': 'o', 'ǒ': 'o', 'ò': 'o',
+        'ū': 'u', 'ú': 'u', 'ǔ': 'u', 'ù': 'u',
+        'ǖ': 'ü', 'ǘ': 'ü', 'ǚ': 'ü', 'ǜ': 'ü',
+    })
 
     # 拼音到 IPA 的映射（简化版）
     PINYIN_TO_IPA = {
@@ -59,6 +70,16 @@ class TextGridExporter:
         'u': 'u', 'ua': 'wa', 'uo': 'wo', 'uai': 'waɪ',
         'ui': 'weɪ', 'uan': 'wan', 'un': 'wən', 'uang': 'waŋ',
         'ü': 'y', 'üe': 'ɥɛ', 'ün': 'yn',
+    }
+    ARPABET_TO_IPA = {
+        'AA': 'ɑ', 'AE': 'æ', 'AH': 'ʌ', 'AO': 'ɔ', 'AW': 'aʊ',
+        'AY': 'aɪ', 'B': 'b', 'CH': 'tʃ', 'D': 'd', 'DH': 'ð',
+        'EH': 'ɛ', 'ER': 'ɚ', 'EY': 'eɪ', 'F': 'f', 'G': 'ɡ',
+        'HH': 'h', 'IH': 'ɪ', 'IY': 'i', 'JH': 'dʒ', 'K': 'k',
+        'L': 'l', 'M': 'm', 'N': 'n', 'NG': 'ŋ', 'OW': 'oʊ',
+        'OY': 'ɔɪ', 'P': 'p', 'R': 'ɹ', 'S': 's', 'SH': 'ʃ',
+        'T': 't', 'TH': 'θ', 'UH': 'ʊ', 'UW': 'u', 'V': 'v',
+        'W': 'w', 'Y': 'j', 'Z': 'z', 'ZH': 'ʒ',
     }
 
     def __init__(self):
@@ -261,59 +282,45 @@ class TextGridExporter:
         Returns:
             (initials, finals): 声母列表和韵母列表
         """
+        initials, finals = self._split_pinyin_cached(pinyin)
+        return list(initials), list(finals)
+
+    @staticmethod
+    @lru_cache(maxsize=1024)
+    def _split_pinyin_cached(pinyin: str) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+        """缓存拼音拆分结果，减少重复字符串处理。"""
         # 处理带声调的拼音
-        pinyin_clean = self._remove_tone(pinyin)
+        pinyin_clean = TextGridExporter._remove_tone(pinyin)
 
         # 识别声母
         initial = ""
         final = pinyin_clean
 
         # 按长度降序尝试匹配声母
-        for init in sorted(self.INITIALS, key=len, reverse=True):
+        for init in TextGridExporter.INITIALS_SORTED:
             if pinyin_clean.startswith(init):
                 initial = init
                 final = pinyin_clean[len(init):]
                 break
 
-        return [initial] if initial else [""], [final] if final else [""]
+        return ((initial,) if initial else ("",), (final,) if final else ("",))
 
-    def _remove_tone(self, pinyin: str) -> str:
+    @staticmethod
+    @lru_cache(maxsize=1024)
+    def _remove_tone(pinyin: str) -> str:
         """移除声调符号"""
-        # 声调映射
-        tone_map = {
-            'ā': 'a', 'á': 'a', 'ǎ': 'a', 'à': 'a',
-            'ē': 'e', 'é': 'e', 'ě': 'e', 'è': 'e',
-            'ī': 'i', 'í': 'i', 'ǐ': 'i', 'ì': 'i',
-            'ō': 'o', 'ó': 'o', 'ǒ': 'o', 'ò': 'o',
-            'ū': 'u', 'ú': 'u', 'ǔ': 'u', 'ù': 'u',
-            'ǖ': 'ü', 'ǘ': 'ü', 'ǚ': 'ü', 'ǜ': 'ü',
-        }
+        return pinyin.translate(TextGridExporter.TONE_TRANSLATION)
 
-        result = ""
-        for char in pinyin:
-            result += tone_map.get(char, char)
-
-        return result
-
-    def _to_ipa(self, phoneme: str) -> str:
+    @staticmethod
+    @lru_cache(maxsize=1024)
+    def _to_ipa(phoneme: str) -> str:
         """将音素转换为 IPA 符号"""
         # 中文拼音转 IPA
-        if phoneme in self.PINYIN_TO_IPA:
-            return self.PINYIN_TO_IPA[phoneme]
+        if phoneme in TextGridExporter.PINYIN_TO_IPA:
+            return TextGridExporter.PINYIN_TO_IPA[phoneme]
 
         # 英文音素转 IPA（简化映射）
-        arpabet_to_ipa = {
-            'AA': 'ɑ', 'AE': 'æ', 'AH': 'ʌ', 'AO': 'ɔ', 'AW': 'aʊ',
-            'AY': 'aɪ', 'B': 'b', 'CH': 'tʃ', 'D': 'd', 'DH': 'ð',
-            'EH': 'ɛ', 'ER': 'ɚ', 'EY': 'eɪ', 'F': 'f', 'G': 'ɡ',
-            'HH': 'h', 'IH': 'ɪ', 'IY': 'i', 'JH': 'dʒ', 'K': 'k',
-            'L': 'l', 'M': 'm', 'N': 'n', 'NG': 'ŋ', 'OW': 'oʊ',
-            'OY': 'ɔɪ', 'P': 'p', 'R': 'ɹ', 'S': 's', 'SH': 'ʃ',
-            'T': 't', 'TH': 'θ', 'UH': 'ʊ', 'UW': 'u', 'V': 'v',
-            'W': 'w', 'Y': 'j', 'Z': 'z', 'ZH': 'ʒ',
-        }
-
-        return arpabet_to_ipa.get(phoneme.upper(), phoneme)
+        return TextGridExporter.ARPABET_TO_IPA.get(phoneme.upper(), phoneme)
 
     def export_from_alignment(
         self,
@@ -336,22 +343,29 @@ class TextGridExporter:
         # 创建 TextGrid
         tg = self.create_textgrid(duration)
 
-        # 分离不同类型的段
-        events = [s for s in alignment_result if s["type"] == "event"]
-        phonemes = [s for s in alignment_result if s["type"] == "phoneme"]
+        # 分离不同类型的段，避免为同一结果重复遍历多次。
+        events = []
+        phonemes = []
+        for segment in alignment_result:
+            segment_type = segment.get("type")
+            if segment_type == "event":
+                events.append({
+                    "start": segment["start"],
+                    "end": segment["end"],
+                    "label": segment.get("token", segment.get("label", "")),
+                })
+            elif segment_type == "phoneme":
+                phonemes.append({
+                    "pinyin": segment["token"],
+                    "start": segment["start"],
+                    "end": segment["end"],
+                })
 
         # 填充各层级
-        # 事件使用 "token" 或 "label" 字段
-        self.add_event_tier(tg, [
-            {"start": e["start"], "end": e["end"], "label": e.get("token", e.get("label", ""))}
-            for e in events
-        ])
+        self.add_event_tier(tg, events)
 
         # 中文音素层级
-        self.add_phoneme_cn_tier(tg, [
-            {"pinyin": p["token"], "start": p["start"], "end": p["end"]}
-            for p in phonemes
-        ])
+        self.add_phoneme_cn_tier(tg, phonemes)
 
         # 保存
         tg.write(output_path)

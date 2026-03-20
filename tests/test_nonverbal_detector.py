@@ -89,6 +89,17 @@ class TestNonverbalEventDetectorInitialization:
             # 模型加载失败会回退到启发式
             assert detector.method == "heuristic" or detector.model is not None
 
+    def test_resampler_cache_reuses_same_source_rate(self):
+        """测试同一源采样率复用重采样器"""
+        detector = NonverbalEventDetector(method="heuristic", sample_rate=16000)
+
+        with patch("aligner.nonverbal_detector.torchaudio.transforms.Resample") as mock_resample:
+            first = detector._get_resampler(8000)
+            second = detector._get_resampler(8000)
+
+        mock_resample.assert_called_once_with(8000, 16000)
+        assert first is second
+
 
 class TestFeatureExtraction:
     """特征提取测试"""
@@ -108,6 +119,21 @@ class TestFeatureExtraction:
         assert "zero_crossing_rate" in features
         assert "spectral_rolloff" in features
         assert "mel_energy" in features
+
+    def test_extract_features_skips_optional_when_disabled(self, sample_detector: NonverbalEventDetector):
+        """测试可选重特征可以按需跳过"""
+        sample_rate = 16000
+        duration = 1.0
+        t = np.linspace(0, duration, int(sample_rate * duration))
+        waveform = np.sin(2 * np.pi * 440 * t) * 0.3
+
+        features = sample_detector._extract_features(waveform, include_optional=False)
+
+        assert "energy" in features
+        assert "spectral_centroid" in features
+        assert "zero_crossing_rate" in features
+        assert "spectral_rolloff" not in features
+        assert "mel_energy" not in features
 
     def test_energy_calculation(self, sample_detector: NonverbalEventDetector):
         """测试能量计算"""

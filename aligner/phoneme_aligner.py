@@ -57,9 +57,21 @@ class PhonemeAligner:
         self.lang = lang
         self.sample_rate = sample_rate
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self._resamplers: Dict[int, torchaudio.transforms.Resample] = {}
 
         # 加载模型和处理器
         self._load_model()
+
+    def _get_resampler(self, source_sample_rate: int) -> torchaudio.transforms.Resample:
+        """缓存重采样器，避免重复构造相同配置。"""
+        resampler = self._resamplers.get(source_sample_rate)
+        if resampler is None:
+            resampler = torchaudio.transforms.Resample(
+                orig_freq=source_sample_rate,
+                new_freq=self.sample_rate
+            )
+            self._resamplers[source_sample_rate] = resampler
+        return resampler
 
     def _load_model(self):
         """加载 MMS 模型和相关组件"""
@@ -103,11 +115,7 @@ class PhonemeAligner:
 
         # 重采样到目标采样率
         if orig_sr != self.sample_rate:
-            resampler = torchaudio.transforms.Resample(
-                orig_freq=orig_sr,
-                new_freq=self.sample_rate
-            )
-            waveform = resampler(waveform)
+            waveform = self._get_resampler(orig_sr)(waveform)
 
         # 归一化
         waveform = waveform / (torch.max(torch.abs(waveform)) + 1e-8)
